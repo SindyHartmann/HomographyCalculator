@@ -3,7 +3,7 @@ from tkinter.filedialog import askopenfilename
 from PIL import Image, ImageTk
 import tkinter.simpledialog
 
-from . import HomographyCalculation
+from HomographyCalculation import HomographyCalculation
 
 class FieldWindow(Frame):
 

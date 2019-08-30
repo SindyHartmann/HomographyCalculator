@@ -1,5 +1,5 @@
 from tkinter import *
-from . import FieldWindow
+from FieldWindow import FieldWindow
 
 root = Tk()
 app = FieldWindow(root)
