@@ -2,7 +2,10 @@ from tkinter import *
 from tkinter.filedialog import askopenfilename
 from PIL import Image, ImageTk
 import tkinter.simpledialog
+import math
+import numpy as np
 
+from ScrollableFrame import DoubleScrollbarFrame
 from HomographyCalculation import HomographyCalculation
 
 class FieldWindow(Frame):
@@ -11,6 +14,7 @@ class FieldWindow(Frame):
     image_points=[]
     can = None
     nrPoints = None
+    H = None
 
     def __init__(self, master=None):
         Frame.__init__(self, master)               
@@ -19,7 +23,8 @@ class FieldWindow(Frame):
         self.field_points=[]
         self.image_points=[]
         self.can = None   
-        self.nrPoints = None     
+        self.nrPoints = None  
+        self.H = None   
         # size of the window
         self.master.geometry("1400x750")
         self.init_window()
@@ -44,7 +49,6 @@ class FieldWindow(Frame):
 
         # canvas for image
         imageCan = Canvas(self, height=700, width=1000)
-        imageCan.place(relx=1.0,rely=1.0)
         imageCan.pack(fill=BOTH, expand=1, side=LEFT)
 
         # canvas for field
@@ -69,7 +73,7 @@ class FieldWindow(Frame):
         file = Menu(menu)
         file.add_command(label="Open Image", command=lambda: self.load_image(imageCan))
         file.add_separator()
-        file.add_command(label="Exit", command=self.client_exit)
+        file.add_command(label="Exit", command=self.__client_exit)
         menu.add_cascade(label="File", menu=file)
 
         # edit menu entry
@@ -92,12 +96,15 @@ class FieldWindow(Frame):
     def load_image(self,can):
         self.reset()
         #adding the image
-        File = askopenfilename(parent=can, initialdir="./",title='Select an image')
+        File = askopenfilename(parent=self, initialdir="./",title='Select an image')
         load = Image.open(File)
-        load = load.resize((950,650)) #TODO nicht sinnvoll? oder Prozentual?
+        scale = 1.01
+        while load.width>950 and load.height>650:
+            scale = scale-0.01
+            load = load.resize((int(load.width*scale),int(load.height*scale)))
         render = ImageTk.PhotoImage(load)
         # labels can be text or images
-        img = Label(self, image=render)
+        img = Label(can, image=render)
         img.image = render
         img.place(x=30, y=30)
         img.bind("<Button-1>",self.image_click_handler)
@@ -182,6 +189,12 @@ class FieldWindow(Frame):
         if len(self.image_points)==len(self.field_points) and len(self.image_points)>=4:
             print("START CALCULATION")
             calc = HomographyCalculation(self.image_points, self.field_points)
+            calc.startCalculation()
+            self.H = calc.get_H()
+            self.save_H()
+            tkinter.messagebox.showinfo("Calculation finished.", "Calculation responses the following H matrix:\n\n"+str(self.H))
+        else:
+            tkinter.messagebox.showinfo("Calculation not possible", "Not enough points marked for calculation.")
             
 
     def image_click_handler(self,event):
@@ -189,8 +202,7 @@ class FieldWindow(Frame):
         self.image_points.append([event.x,event.y])
 
         # set number of matched points in frame
-        if len(self.image_points)==len(self.field_points):
-            self.nrPoints['text']=str(len(self.image_points))
+        self.nrPoints['text']=str(min(len(self.image_points),len(self.field_points)))
 
     def point_handler(self, event):
         x=round((event.x-30)/16.25,2)
@@ -199,11 +211,23 @@ class FieldWindow(Frame):
         self.field_points.append([x,y])
 
         # set number of matched points in frame
-        if len(self.image_points)==len(self.field_points):
-            self.nrPoints['text']=str(len(self.image_points))
+        self.nrPoints['text']=str(min(len(self.image_points),len(self.field_points)))
 
         # recolor circle
         self.recolor_marker(round(event.x,1), round(event.y,1))
 
-    def client_exit(self):
+    def get_H(self):
+        return self.H
+
+    def get_image_points(self):
+        return self.image_points
+
+    def get_field_points(self):
+        return self.field_points
+
+    def save_H(self):
+        f= open("Homography.txt", "w+")
+        np.save("Homography.txt", self.H)
+
+    def __client_exit(self):
         exit()
