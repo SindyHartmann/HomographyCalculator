@@ -1,59 +1,100 @@
 from tkinter import *
-from tkinter.filedialog import askopenfilename
+from tkinter.filedialog import askopenfilename, askdirectory
 from PIL import Image, ImageTk
 import tkinter.simpledialog
-import math
 import numpy as np
-
-from ScrollableFrame import DoubleScrollbarFrame
+import glob
+import re
+from Homography import Homography
 from HomographyCalculation import HomographyCalculation
 
-class FieldWindow(Frame):
 
-    field_points=[]
-    image_points=[]
+class FieldWindow(Frame):
+    field_points = []
+    image_points = []
+    bboxes = []
+    bboxesFrames = []
+    idsFrames = []
+    ids = []
     can = None
     nrPoints = None
     H = None
+    image_list = []
+    image_counter = 0
+    bb_start = []
+    bb_intermediate = []
+    bb_end = []
+    image = None
+    scale = 1.0
+    currentImage = None
+    textentryid = None
+    folder_loaded = False
+    detecthomography = False
+    bindidimageclick = None
+    bindidhomographyclick = None
+    homographyPointsIDs = []
+    iddict = {
+        'Black-Red':1, 'Black-Green':2, 'Black-Blue':3, 'Black-Yellow':4, 'Black-Pink':5, 'White-Red':6, 'White-Green':7,
+        'White-Blue':8, 'White-Yellow':9, 'White-Pink':10, 'Ball':0, 'Unknown':None
+    }
 
     def __init__(self, master=None):
-        Frame.__init__(self, master)               
+        Frame.__init__(self, master)
         self.master = master
         # variables
-        self.field_points=[]
-        self.image_points=[]
-        self.can = None   
-        self.nrPoints = None  
-        self.H = None   
+        self.field_points = []
+        self.image_points = []
+        self.can = None
+        self.image_can = None
+        self.nrPoints = None
+        self.H = None
         # size of the window
         self.master.geometry("1400x750")
         self.init_window()
         self.centerWindow()
         # init point lists
 
-    #Creation of init_window
+    # Creation of init_window
     def init_window(self):
-        # changing the title of our master widget      
-        self.master.title("Homography Calculator")
+        # changing the title of our master widget
+        self.master.title("Frame processing")
+        self.master.bind('<Left>', self.leftKey)
+        self.master.bind('<Right>', self.rightKey)
         self.pack(fill=BOTH, expand=1)
-
         # button canvas
-        btnCan = Canvas(self,height=20, width=1400)
+        btnCan = Canvas(self, height=20, width=1400)
         lbl = Label(btnCan, text="Number of matched points:")
-        lbl.pack(side=LEFT,padx=40)
+        lbl.pack(side=LEFT, padx=40)
         self.nrPoints = Label(btnCan, text="0", width=20)
-        self.nrPoints.pack( side=LEFT)
+        self.nrPoints.pack(side=LEFT)
         startCalc = Button(btnCan, text="Start Homography Calculation", command=self.startCalculation)
-        startCalc.pack(side=RIGHT,padx=40)
+        startCalc.pack(side=RIGHT, padx=40)
+        buttonsaveid=Button(btnCan, text="Save", command=self.saveBoundingBoxID)
+        buttonsaveid.pack(side=RIGHT, padx=5)
+        #self.textentryid = Entry(btnCan)
+        #self.textentryid.pack(side=RIGHT, padx=5)
+
+        # Create a Tkinter variable
+        self.textentryid = StringVar(btnCan)
+
+        # Dictionary with options
+        choices = {'Black-Red', 'Black-Green', 'Black-Blue', 'Black-Yellow', 'Black-Pink','White-Red','White-Green','White-Blue', 'White-Yellow', 'White-Pink', 'Ball', 'Unknown'}
+        self.textentryid.set('None')  # set the default option
+
+        popupMenu = OptionMenu(btnCan, self.textentryid, *choices)
+        popupMenu.pack(side=RIGHT, padx=5)
+        id = Label(btnCan, text="ID")
+        id.pack(side=RIGHT, padx=5)
         btnCan.pack(fill=BOTH)
 
         # canvas for image
         imageCan = Canvas(self, height=700, width=1000)
         imageCan.pack(fill=BOTH, expand=1, side=LEFT)
+        self.image_can = imageCan
 
         # canvas for field
         fieldCan = Canvas(self, bg="white", height=700, width=400)
-        fieldCan.place(relx=1.0,rely=1.0)
+        fieldCan.place(relx=1.0, rely=1.0)
         fieldCan.pack(fill=BOTH, expand=1, side=RIGHT)
         self.can = fieldCan
 
@@ -61,55 +102,90 @@ class FieldWindow(Frame):
         self.load_field(fieldCan)
         self.mark_points(fieldCan)
 
-        self.init_menu(imageCan,fieldCan)
-    
-        
-    def init_menu(self,imageCan,fieldCan):
+        self.init_menu(imageCan, fieldCan)
+
+    def init_menu(self, imageCan, fieldCan):
         # creating a menu instance
         menu = Menu(self.master)
         self.master.config(menu=menu)
 
         # file menue entry
-        file = Menu(menu)
-        file.add_command(label="Open Image", command=lambda: self.load_image(imageCan))
-        file.add_separator()
-        file.add_command(label="Exit", command=self.__client_exit)
-        menu.add_cascade(label="File", menu=file)
+        folder = Menu(menu)
+        folder.add_command(label="Open Folder", command=lambda: self.load_folder(imageCan))
+        folder.add_separator()
+        folder.add_command(label="Next image", command=lambda: self.load_next_image(imageCan))
+        folder.add_command(label="Save results", command=lambda: self.save_results())
+        menu.add_cascade(label="Folder", menu=folder)
 
-        # edit menu entry
-        #edit = Menu(menu)
-        #edit.add_command(label="Undo")
-        #menu.add_cascade(label="Edit", menu=edit)
+        homographymenu = Menu(menu)
+        homographymenu.add_command(label="Insert points",command=lambda: self.enterHPoints())
+        homographymenu.add_command(label="Stop inserting points", command=lambda: self.processFrames())
+        menu.add_cascade(label="Homography", menu=homographymenu)
 
     def centerWindow(self):
         # Gets the requested values of the height and widht.
-        windowWidth = 1400#self.master.winfo_reqwidth()
-        windowHeight = 800#self.master.winfo_reqheight()
-        
+        windowWidth = 1400  # self.master.winfo_reqwidth()
+        windowHeight = 800  # self.master.winfo_reqheight()
+
         # Gets both half the screen width/height and window width/height
-        positionRight = int(self.master.winfo_screenwidth()/2 - windowWidth/2)
-        positionDown = int(self.master.winfo_screenheight()/2 - windowHeight/2)
-        
+        positionRight = int(self.master.winfo_screenwidth() / 2 - windowWidth / 2)
+        positionDown = int(self.master.winfo_screenheight() / 2 - windowHeight / 2)
+
         # Positions the window in the center of the page.
         self.master.geometry("+{}+{}".format(positionRight, positionDown))
 
-    def load_image(self,can):
+    def load_image(self, can):
         self.reset()
-        #adding the image
-        File = askopenfilename(parent=self, initialdir="./",title='Select an image')
-        load = Image.open(File)
-        scale = 1.01
-        while load.width>950 and load.height>650:
-            scale = scale-0.01
-            load = load.resize((int(load.width*scale),int(load.height*scale)))
-        render = ImageTk.PhotoImage(load)
-        # labels can be text or images
-        img = Label(can, image=render)
-        img.image = render
-        img.place(x=30, y=30)
-        img.bind("<Button-1>",self.image_click_handler)
+        # adding the image
 
-    def load_field(self,bg):
+
+    def load_folder(self, can):
+        self.reset()
+        self.folder_loaded = True
+        # adding the image
+        folder = askdirectory(parent=self, initialdir="./", title='Select a folder')
+        files = glob.glob(folder + '/*')
+        self.image_list = files
+
+        # sort images by number in name
+        files = sorted(files, key=lambda x: float(re.findall("(\d+)", x)[-1]))
+        print(files[0])
+        if len(files) > 0:
+            self.load_next_image(can)
+
+
+    def load_next_image(self, can):
+        if len(self.image_list) > 0 and self.image_counter < len(self.image_list):
+            #self.reset()
+            # adding the image
+            if self.image_counter>0:
+                self.bboxesFrames.append(self.bboxes)
+                self.bboxes = []
+                self.idsFrames.append(self.ids)
+                self.ids = []
+            load = Image.open(self.image_list[self.image_counter])
+            self.image_counter +=1
+            scale = 1.01
+            print(load.width)
+            while load.width > 950 and load.height > 650:
+                scale = scale - 0.01
+                load = load.resize((int(load.width * scale), int(load.height * scale)))
+            self.scale = scale
+            render = ImageTk.PhotoImage(load)#tkinter.PhotoImage(load)
+            #print(render.width())
+            # labels can be text or images
+            self.currentImage = load
+            self.image_can.create_image(20,20, anchor=NW, image=render)
+            self.image_can.bind("<Button-1>", self.image_click_handler)
+            self.image_can.bind("<B1-Motion>", self.image_drag_handler)
+            self.image_can.bind("<ButtonRelease-1>", self.image_release_handler)
+            self.image_can.imageList.append(render)
+        elif self.image_counter >= len(self.image_list):
+            tkinter.messagebox.showinfo("Last frame", "This was the last frame")
+
+
+
+    def load_field(self, bg):
         # side lines
         bg.create_line(30, 30, 30, 680, width=5)
         bg.create_line(30, 30, 355, 30, width=5)
@@ -130,91 +206,177 @@ class FieldWindow(Frame):
     def mark_points(self, can):
         r = 5
         # upper line
-        can.create_oval(30-r, 30-r, 30+r, 30+r, fill="red", activefill="yellow")
-        can.create_oval(131.5625-r, 30-r, 131.5625+r, 30+r, fill="red", activefill="yellow")
-        can.create_oval(253.4375-r, 30-r, 253.4375+r, 30+r, fill="red", activefill="yellow")
-        can.create_oval(355-r, 30-r, 355+r, 30+r, fill="red", activefill="yellow")
+        can.create_oval(30 - r, 30 - r, 30 + r, 30 + r, fill="red", activefill="yellow")
+        #can.create_oval(131.5625 - r, 30 - r, 131.5625 + r, 30 + r, fill="red", activefill="yellow")
+        #can.create_oval(253.4375 - r, 30 - r, 253.4375 + r, 30 + r, fill="red", activefill="yellow")
+        can.create_oval(355 - r, 30 - r, 355 + r, 30 + r, fill="red", activefill="yellow")
         # bottom line
-        can.create_oval(30-r, 680-r, 30+r, 680+r, fill="red", activefill="yellow")
-        can.create_oval(131.5625-r, 680-r, 131.5625+r, 680+r, fill="red", activefill="yellow")
-        can.create_oval(253.4375-r, 680-r, 253.4375+r, 680+r, fill="red", activefill="yellow")
-        can.create_oval(355-r, 680-r, 355+r, 680+r, fill="red", activefill="yellow")
+        can.create_oval(30 - r, 680 - r, 30 + r, 680 + r, fill="red", activefill="yellow")
+        #can.create_oval(131.5625 - r, 680 - r, 131.5625 + r, 680 + r, fill="red", activefill="yellow")
+        #can.create_oval(253.4375 - r, 680 - r, 253.4375 + r, 680 + r, fill="red", activefill="yellow")
+        can.create_oval(355 - r, 680 - r, 355 + r, 680 + r, fill="red", activefill="yellow")
         # middle line
-        can.create_oval(30-r, 355-r, 30+r, 355+r, fill="red", activefill="yellow")
-        can.create_oval(355-r, 355-r, 355+r, 355+r, fill="red", activefill="yellow")
+        can.create_oval(30 - r, 355 - r, 30 + r, 355 + r, fill="red", activefill="yellow")
+        can.create_oval(355 - r, 355 - r, 355 + r, 355 + r, fill="red", activefill="yellow")
 
         can.bind("<Button-1>", self.point_handler)
 
     def reset(self):
         # variables
-        self.field_points=[]
-        self.image_points=[]
+        self.field_points = []
+        self.image_points = []
         # field
         self.load_field(self.can)
         self.mark_points(self.can)
 
-
-    def near(self,p,o):
-        if p>(o-5) and p<(o+5):
+    def near(self, p, o):
+        if p > (o - 5) and p < (o + 5):
             return True
 
     def recolor_marker(self, x, y):
         r = 5
         # upper line
-        if self.near(x,30) and self.near(y,30):
-            self.can.create_oval(30-r, 30-r, 30+r, 30+r, fill="lightgreen")
-        if self.near(x,131.5625) and self.near(y,30):
-            self.can.create_oval(131.5625-r, 30-r, 131.5625+r, 30+r, fill="lightgreen")
-        if self.near(x,253.4375) and self.near(y,30):
-            self.can.create_oval(253.4375-r, 30-r, 253.4375+r, 30+r, fill="lightgreen")
-        if self.near(x,355) and self.near(y,30):
-            self.can.create_oval(355-r, 30-r, 355+r, 30+r, fill="lightgreen")
+        if self.near(x, 30) and self.near(y, 30):
+            self.can.create_oval(30 - r, 30 - r, 30 + r, 30 + r, fill="lightgreen")
+            self.homographyPointsIDs.append(3)
+        #if self.near(x, 131.5625) and self.near(y, 30):
+        #    self.can.create_oval(131.5625 - r, 30 - r, 131.5625 + r, 30 + r, fill="lightgreen")
+         #   self.homographyPointsIDs.append(1)
+        #if self.near(x, 253.4375) and self.near(y, 30):
+        #    self.can.create_oval(253.4375 - r, 30 - r, 253.4375 + r, 30 + r, fill="lightgreen")
+         #   self.homographyPointsIDs.append(2)
+        if self.near(x, 355) and self.near(y, 30):
+            self.can.create_oval(355 - r, 30 - r, 355 + r, 30 + r, fill="lightgreen")
+            self.homographyPointsIDs.append(0)
         # bottom line
-        if self.near(x,30) and self.near(y,680):
-            self.can.create_oval(308-r, 680-r, 30+r, 680+r, fill="lightgreen")
-        if self.near(x,131.5625) and self.near(y,680):
-            self.can.create_oval(131.5625-r, 680-r, 131.5625+r, 680+r, fill="lightgreen")
-        if self.near(x,253.4375) and self.near(y,680):
-            self.can.create_oval(253.4375-r, 680-r, 253.4375+r, 680+r, fill="lightgreen")
-        if self.near(x,355) and self.near(y,680):
-            self.can.create_oval(355-r, 680-r, 355+r, 680+r, fill="lightgreen")
+        if self.near(x, 30) and self.near(y, 680):
+            self.can.create_oval(30 - r, 680 - r, 30 + r, 680 + r, fill="lightgreen")
+            self.homographyPointsIDs.append(5)
+        #if self.near(x, 131.5625) and self.near(y, 680):
+        #    self.can.create_oval(131.5625 - r, 680 - r, 131.5625 + r, 680 + r, fill="lightgreen")
+         #   self.homographyPointsIDs.append(5)
+        #if self.near(x, 253.4375) and self.near(y, 680):
+        #    self.can.create_oval(253.4375 - r, 680 - r, 253.4375 + r, 680 + r, fill="lightgreen")
+        #    self.homographyPointsIDs.append(6)
+        if self.near(x, 355) and self.near(y, 680):
+            self.can.create_oval(355 - r, 680 - r, 355 + r, 680 + r, fill="lightgreen")
+            self.homographyPointsIDs.append(4)
         # bottom line
-        if self.near(x,30) and self.near(y,355):
-            self.can.create_oval(30-r, 355-r, 30+r, 355+r, fill="lightgreen")
-        if self.near(x,355) and self.near(y,355):
-            self.can.create_oval(355-r, 355-r, 355+r, 355+r, fill="lightgreen")
-
-
+        if self.near(x, 30) and self.near(y, 355):
+            self.can.create_oval(30 - r, 355 - r, 30 + r, 355 + r, fill="lightgreen")
+            self.homographyPointsIDs.append(2)
+        if self.near(x, 355) and self.near(y, 355):
+            self.can.create_oval(355 - r, 355 - r, 355 + r, 355 + r, fill="lightgreen")
+            self.homographyPointsIDs.append(1)
+        print(self.homographyPointsIDs)
     def startCalculation(self):
-        if len(self.image_points)==len(self.field_points) and len(self.image_points)>=4:
+        if len(self.image_points) == len(self.field_points) and len(self.image_points) >= 3:
             print("START CALCULATION")
-            calc = HomographyCalculation(self.image_points, self.field_points)
-            calc.startCalculation()
-            self.H = calc.get_H()
-            self.save_H()
-            tkinter.messagebox.showinfo("Calculation finished.", "Calculation responses the following H matrix:\n\n"+str(self.H))
+            calc = Homography()#HomographyCalculation(self.image_points, self.field_points)
+            homographyRet = calc.calcHomography(self.image_points, self.homographyPointsIDs)
+            if homographyRet == -1:
+                tkinter.messagebox.showinfo("Homography error", "Less than 3 points chosen for homography. Please add more")
+            if homographyRet ==-2:
+                tkinter.messagebox.showinfo("Homography error", "Chosen points are on one line. Please add perpendicular point")
+            #calc.startCalculation()
+
+            self.H = calc
+            self.testHomography()
+            #self.save_H()
+            tkinter.messagebox.showinfo("Calculation finished.",
+                                        "Calculated Homography")
         else:
             tkinter.messagebox.showinfo("Calculation not possible", "Not enough points marked for calculation.")
-            
 
-    def image_click_handler(self,event):
-        #print('position: x='+str(event.x)+", y="+str(event.y))
-        self.image_points.append([event.x,event.y])
+    def homography_click_handler(self, event):
+        # print('position: x='+str(event.x)+", y="+str(event.y))
+        x, y= event.x, event.y
+        self.image_points.append([event.x, event.y])
+        self.image_can.create_oval(x-3 , y-3, x+3, y+3, fill="lightgreen")
+        # set number of matched points in frame
+        self.nrPoints['text'] = str(min(len(self.image_points), len(self.field_points)))
+
+    def image_click_handler(self, event):
+        # print('position: x='+str(event.x)+", y="+str(event.y))
+        self.bb_start = [event.x, event.y]
+        self.image_points.append([event.x, event.y])
 
         # set number of matched points in frame
-        self.nrPoints['text']=str(min(len(self.image_points),len(self.field_points)))
+        self.nrPoints['text'] = str(min(len(self.image_points), len(self.field_points)))
+
+    def image_drag_handler(self, event):
+        #print('drag position: x='+str(event.x)+", y="+str(event.y))
+        self.bb_intermediate = [event.x, event.y]
+        self.draw_bb()
+
+
+    def image_release_handler(self, event):
+        #print('release position: x='+str(event.x)+", y="+str(event.y))
+        self.bb_end = [event.x, event.y]
+
+    def draw_bb(self):
+        self.image_can.create_image(20,20, anchor=NW, image=ImageTk.PhotoImage(self.currentImage))
+        for bb in self.bboxes:
+            self.image_can.create_rectangle(bb[0], bb[1], bb[2], bb[3])
+        self.image_can.create_rectangle(self.bb_start[0], self.bb_start[1], self.bb_intermediate[0], self.bb_intermediate[1])
+
+    def saveBoundingBoxID(self):
+        self.bboxes.append([self.bb_start[0],self.bb_start[1],self.bb_end[0],self.bb_end[1]])
+        self.ids.append(self.iddict[self.textentryid.get()])
+        print(self.ids)
+        print(self.textentryid.get())
+        self.textentryid.set('None')
+
+    def testHomography(self):
+        if self.H is not None:
+            imageTransformed = self.H.transformImage(self.currentImage.transpose(Image.FLIP_LEFT_RIGHT).transpose(Image.ROTATE_90))
+            print(self.currentImage.size)
+            print(imageTransformed.size)
+            self.image_can.create_image(20,20, anchor=NW, image=ImageTk.PhotoImage(imageTransformed))
+            imageTransformed.save("img2.png")
+            #print(np.asarray(imageTransformed))
+
+    def save_results(self):
+
+        print("save results")
 
     def point_handler(self, event):
-        x=round((event.x-30)/16.25,2)
-        y=round((event.y-30)/16.25,2)
-        #print('point: x='+str(x)+", y="+str(y))
-        self.field_points.append([x,y])
+        x = round((event.x - 30) / 16.25, 2)
+        y = round((event.y - 30) / 16.25, 2)
+        # print('point: x='+str(x)+", y="+str(y))
+        self.field_points.append([x, y])
 
         # set number of matched points in frame
-        self.nrPoints['text']=str(min(len(self.image_points),len(self.field_points)))
+        self.nrPoints['text'] = str(min(len(self.image_points), len(self.field_points)))
 
         # recolor circle
-        self.recolor_marker(round(event.x,1), round(event.y,1))
+        self.recolor_marker(round(event.x, 1), round(event.y, 1))
+
+    def enterHPoints(self):
+        if self.folder_loaded:
+            if self.bindidimageclick != None:
+                self.image_can.unbind(self.bindidimageclick)
+                self.bindidimageclick = None
+            self.bindidhomographyclick = self.image_can.bind("<Button-1>", self.homography_click_handler)
+            self.detecthomography = True
+        else:
+            tkinter.messagebox.showinfo("No folder", "No images available. Please load folder.")
+
+    def processFrames(self):
+        if self.folder_loaded:
+            if self.bindidhomographyclick != None:
+                self.image_can.undbind(self.bindidhomographyclick)
+                self.bindidhomographyclick = None
+            self.bindidimageclick = self.image_can.bind("<Button-1>", self.image_click_handler)
+
+    def leftKey(self,event):
+        print("Left key pressed")
+
+    def rightKey(self, event):
+        print("Right key pressed")
+        if self.folder_loaded:
+            self.load_next_image(self.image_can)
+
 
     def get_H(self):
         return self.H
@@ -226,8 +388,10 @@ class FieldWindow(Frame):
         return self.field_points
 
     def save_H(self):
-        f= open("Homography.txt", "w+")
+        f = open("Homography.txt", "w+")
         np.save("Homography.txt", self.H)
 
     def __client_exit(self):
         exit()
+
+
