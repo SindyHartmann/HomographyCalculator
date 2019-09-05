@@ -194,17 +194,17 @@ class FieldWindow(Frame):
         print("__draw_BBs")
         self.savedBBs = []
         for i in range(0,len(bbs),6):
-            lbl = bbs[i]
+            lbl = int(bbs[i])
             x = float(bbs[i+1])
             y = float(bbs[i+2])
             width = float(bbs[i+3])
             height = float(bbs[i+4])
             conf = int(float(bbs[i+5])*10)
-            bbid = self.image_can.create_rectangle(x,y,x+width,y+height,outline=self.bbcolor[conf])
+            bbid = self.image_can.create_rectangle(x,y,x+width,y+height,outline=self.bbcolor[lbl],width=3)
             if lbl is not None and lbl!="":
-                bblblid = self.image_can.create_text(x+15,y-15,text=lbl,fill=self.bbcolor[conf])
+                bblblid = self.image_can.create_text(x+15,y-15,text=lbl,fill=self.bbcolor[lbl],font='bold')
             else:
-                bblblid = self.image_can.create_text(x+15,y-15,text="",fill=self.bbcolor[conf])
+                bblblid = self.image_can.create_text(x+15,y-15,text="",fill=self.bbcolor[lbl],font='bold')
             
             # save bb for labeling 
             self.savedBBs.append([bbid,bblblid,[lbl,x,y,conf]])
@@ -212,17 +212,17 @@ class FieldWindow(Frame):
         self.image_can.itemconfig(self.savedBBs[self.BBcounter][1],fill='lightgreen')
 
     def __next_BB(self,event):
-        conf = self.savedBBs[self.BBcounter][2][-1]
-        self.image_can.itemconfig(self.savedBBs[self.BBcounter][0],outline=self.bbcolor[conf])
-        self.image_can.itemconfig(self.savedBBs[self.BBcounter][1],fill=self.bbcolor[conf])
+        lbl = self.savedBBs[self.BBcounter][2][0]
+        self.image_can.itemconfig(self.savedBBs[self.BBcounter][0],outline=self.bbcolor[lbl])
+        self.image_can.itemconfig(self.savedBBs[self.BBcounter][1],fill=self.bbcolor[lbl])
         self.BBcounter = (self.BBcounter+1)%len(self.savedBBs)
         self.image_can.itemconfig(self.savedBBs[self.BBcounter][0],outline='lightgreen')
         self.image_can.itemconfig(self.savedBBs[self.BBcounter][1],fill='lightgreen')
         
     def __BB_before(self,event):
-        conf = self.savedBBs[self.BBcounter][2][-1]
-        self.image_can.itemconfig(self.savedBBs[self.BBcounter][0],outline=self.bbcolor[conf])
-        self.image_can.itemconfig(self.savedBBs[self.BBcounter][1],fill=self.bbcolor[conf])
+        lbl = self.savedBBs[self.BBcounter][2][-1]
+        self.image_can.itemconfig(self.savedBBs[self.BBcounter][0],outline=self.bbcolor[lbl])
+        self.image_can.itemconfig(self.savedBBs[self.BBcounter][1],fill=self.bbcolor[lbl])
         self.BBcounter = (self.BBcounter-1)%len(self.savedBBs)
         self.image_can.itemconfig(self.savedBBs[self.BBcounter][0],outline='lightgreen')
         self.image_can.itemconfig(self.savedBBs[self.BBcounter][1],fill='lightgreen')
@@ -380,6 +380,17 @@ class FieldWindow(Frame):
                                         "Calculated Homography")
         else:
             tkinter.messagebox.showinfo("Calculation not possible", "Not enough points marked for calculation.")
+        if len(self.savedBBs)>0 and self.H is not None and self.H.homography is not None:
+            points = []
+            for bbs in self.savedBBs:
+                lbl = int(bbs[-1][0])
+                x = bbs[-1][1]
+                y = bbs[-1][2]
+                points.append([x,y])
+                p = self.H.transformPoint(np.array([[x,y]],dtype=float).reshape((-1, 1, 2)))
+                x_ = 355-(p[0,0,0]*355/2000)+30
+                y_ = (p[0,0,1]*355/2000)+30
+                self.can.create_text(x_,y_,text=lbl,fill=self.bbcolor[lbl])
 
     def homography_click_handler(self, event):
         # print('position: x='+str(event.x)+", y="+str(event.y))
