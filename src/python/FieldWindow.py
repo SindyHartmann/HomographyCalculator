@@ -1,10 +1,12 @@
 from tkinter import *
 from tkinter.filedialog import askopenfilename, askdirectory
+from tkinter import messagebox
 from PIL import Image, ImageTk
 import tkinter.simpledialog
 import numpy as np
 import glob
 import re
+import csv
 from Homography import Homography
 import CSVManager
 
@@ -27,6 +29,11 @@ class FieldWindow(Frame):
     bb_start = []
     bb_intermediate = []
     bb_end = []
+    #sindys
+    BBcounter = 0
+    savedBBs=[]
+    bbcolor = []
+    #
     image = None
     scale = 1.0
     currentImage = None
@@ -64,6 +71,12 @@ class FieldWindow(Frame):
         self.image_can = None
         self.nrPoints = None
         self.H = None
+        #colors for bbs
+        self.bbcolor = ['#003FFF','#0000FF','#5F00FF','#BF00FF','#FF00FE','#FF00BF','#FF007F','#FF003F','#FF0000','#FF3F00','#FF9F00','#DFFF00']
+        #003FFF#001FFF#0000FF#3F00FF#5F00FF#7F00FF #BF00FF#DF00FF#FF00FE#FF00DF#FF00BF#FF009F#FF007F#FF005F#FF003F#FF001F
+        #FF0000#FF1F00 #FF3F00#FF7F00 #FF9F00#FFBF00 #FFDF00#DFFF00
+        self.BBcounter = 0
+        self.savedBBs=[]
         # size of the window
         self.master.geometry("1400x750")
         self.init_window()
@@ -74,12 +87,16 @@ class FieldWindow(Frame):
     def init_window(self):
         # changing the title of our master widget
         self.master.title("Frame processing")
+        # set key listener
         self.master.bind('<Left>', self.leftKey)
         self.master.bind('<Right>', self.rightKey)
         for i in range(10):
             self.master.bind(str(i), self.numberKey)
         self.master.bind('<b>', self.bKey)
         self.master.bind('<s>', self.saveBBox)
+        self.master.bind('+', self.__next_BB)
+        self.master.bind('-', self.__BB_before)
+        self.master.bind('<Key>', self.__set_Lbl)
         self.pack(fill=BOTH, expand=1)
         # button canvas
         self.btnCan = Canvas(self, height=20, width=1400)
@@ -91,6 +108,7 @@ class FieldWindow(Frame):
         startCalc.pack(side=RIGHT, padx=40)
         buttonsaveid=Button(self.btnCan, text="Save", command=self.saveBoundingBoxID)
         buttonsaveid.pack(side=RIGHT, padx=5)
+        self.bbs=[]
         #self.textentryid = Entry(btnCan)
         #self.textentryid.pack(side=RIGHT, padx=5)
 
@@ -133,6 +151,7 @@ class FieldWindow(Frame):
         # file menue entry
         folder = Menu(menu)
         folder.add_command(label="Open Folder", command=lambda: self.load_folder(imageCan))
+        #folder.add_command(label="Load Bounding Boxes File", command=lambda: self.load_BBs(imageCan))
         folder.add_separator()
         folder.add_command(label="Next image", command=lambda: self.load_next_image(imageCan))
         folder.add_command(label="Save results", command=lambda: self.save_results())
@@ -159,13 +178,24 @@ class FieldWindow(Frame):
         self.reset()
         # adding the image
 
-
     def load_folder(self, can):
         self.reset()
         self.folder_loaded = True
         # adding the image
         folder = askdirectory(parent=self, initialdir="./", title='Select a folder')
         files = glob.glob(folder + '/*')
+        # search for BB File
+        bbFile = [f for f in files if f.endswith("csv")]
+        if len(bbFile)>0:
+            bbFile = bbFile[0]
+            print("CSV: "+bbFile)
+            files = [f for f in files if not f.endswith("csv")]
+        elif folder is not None:
+            if messagebox.askokcancel(title="No bounding box file found", message="Do you want to choose a bounding box file on an other location?"):
+                bbFile = askopenfilename(parent=self, initialdir="./", title="Choose a bounding box file")
+        if bbFile is not None:
+            self.__load_BBs(bbFile)
+
         self.image_list = files
         self.csv = CSVManager.CSV(folder)
         # sort images by number in name
@@ -173,7 +203,66 @@ class FieldWindow(Frame):
         print(files[0])
         if len(files) > 0:
             self.load_next_image(can)
+        
+    def __load_BBs(self, bbFile):
+        # load file
+        reader = csv.reader(open(bbFile, "r"), delimiter=",")
+        x = list(reader)
+        self.bbs = np.array(x)
+        print("BBs: "+str(self.bbs.shape))
 
+    def __draw_BBs(self, bbs):
+        print("__draw_BBs")
+        self.savedBBs = []
+        for i in range(0,len(bbs),6):
+            lbl = bbs[i]
+            x = float(bbs[i+1])
+            y = float(bbs[i+2])
+            width = float(bbs[i+3])
+            height = float(bbs[i+4])
+            conf = int(float(bbs[i+5])*10)
+            bbid = self.image_can.create_rectangle(x,y,x+width,y+height,outline=self.bbcolor[conf])
+            if lbl is not None and lbl!="":
+                bblblid = self.image_can.create_text(x+15,y-15,text=lbl,fill=self.bbcolor[conf])
+            else:
+                bblblid = self.image_can.create_text(x+15,y-15,text="",fill=self.bbcolor[conf])
+            
+            # save bb for labeling 
+            self.savedBBs.append([bbid,bblblid,[lbl,x,y,conf]])
+        self.image_can.itemconfig(self.savedBBs[self.BBcounter][0],outline='lightgreen')
+        self.image_can.itemconfig(self.savedBBs[self.BBcounter][1],fill='lightgreen')
+
+    def __next_BB(self,event):
+        conf = self.savedBBs[self.BBcounter][2][-1]
+        self.image_can.itemconfig(self.savedBBs[self.BBcounter][0],outline=self.bbcolor[conf])
+        self.image_can.itemconfig(self.savedBBs[self.BBcounter][1],fill=self.bbcolor[conf])
+        self.BBcounter = (self.BBcounter+1)%len(self.savedBBs)
+        self.image_can.itemconfig(self.savedBBs[self.BBcounter][0],outline='lightgreen')
+        self.image_can.itemconfig(self.savedBBs[self.BBcounter][1],fill='lightgreen')
+        
+    def __BB_before(self,event):
+        conf = self.savedBBs[self.BBcounter][2][-1]
+        self.image_can.itemconfig(self.savedBBs[self.BBcounter][0],outline=self.bbcolor[conf])
+        self.image_can.itemconfig(self.savedBBs[self.BBcounter][1],fill=self.bbcolor[conf])
+        self.BBcounter = (self.BBcounter-1)%len(self.savedBBs)
+        self.image_can.itemconfig(self.savedBBs[self.BBcounter][0],outline='lightgreen')
+        self.image_can.itemconfig(self.savedBBs[self.BBcounter][1],fill='lightgreen')
+
+    def __set_Lbl(self,event):
+        if (event.keycode>=48 and event.keycode<=57):
+            newText = self.savedBBs[self.BBcounter][2][0]+event.char
+            self.savedBBs[self.BBcounter][2][0] = newText
+            self.image_can.itemconfig(self.savedBBs[self.BBcounter][1],text=newText)
+            if int(newText)>10:
+                self.image_can.itemconfig(self.savedBBs[self.BBcounter][1],fill='red')  
+            else:      
+                self.image_can.itemconfig(self.savedBBs[self.BBcounter][1],fill='lightgreen')
+
+        if event.keycode==8:
+            newText = self.savedBBs[self.BBcounter][2][0][:-1]
+            self.savedBBs[self.BBcounter][2][0] = newText
+            self.image_can.itemconfig(self.savedBBs[self.BBcounter][1],text=newText)
+        print(event.keycode)
 
     def load_next_image(self, can):
         if len(self.image_list) > 0 and self.image_counter < len(self.image_list):
@@ -187,6 +276,7 @@ class FieldWindow(Frame):
                 self.allConfidences.append(self.confidences)
                 self.confidences = []
             load = Image.open(self.image_list[self.image_counter])
+            bb = self.bbs[self.image_counter][1:]
             self.image_counter +=1
             scale = 1.01
             #print(load.width)
@@ -199,10 +289,12 @@ class FieldWindow(Frame):
             # labels can be text or images
             self.currentImage = load
             self.image_can.create_image(20,20, anchor=NW, image=render)
+            self.__draw_BBs(bb)
             self.image_can.bind("<Button-1>", self.image_click_handler)
             self.image_can.bind("<B1-Motion>", self.image_drag_handler)
             self.image_can.bind("<ButtonRelease-1>", self.image_release_handler)
             self.image_can.imageList.append(render)
+
         elif self.image_counter >= len(self.image_list):
             tkinter.messagebox.showinfo("Last frame", "This was the last frame")
 
@@ -292,6 +384,7 @@ class FieldWindow(Frame):
             self.can.create_oval(355 - r, 355 - r, 355 + r, 355 + r, fill="lightgreen")
             self.homographyPointsIDs.append(1)
         print(self.homographyPointsIDs)
+
     def startCalculation(self):
         if len(self.image_points) == len(self.field_points) and len(self.image_points) >= 3:
             print("START CALCULATION")
