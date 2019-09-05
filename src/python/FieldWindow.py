@@ -29,6 +29,7 @@ class FieldWindow(Frame):
     #sindys
     BBcounter = 0
     savedBBs=[]
+    bbcolor = []
     #
     image = None
     scale = 1.0
@@ -54,7 +55,10 @@ class FieldWindow(Frame):
         self.image_can = None
         self.nrPoints = None
         self.H = None
-            
+        #colors for bbs
+        self.bbcolor = ['#003FFF','#0000FF','#5F00FF','#BF00FF','#FF00FE','#FF00BF','#FF007F','#FF003F','#FF0000','#FF3F00','#FF9F00','#DFFF00']
+        #003FFF#001FFF#0000FF#3F00FF#5F00FF#7F00FF #BF00FF#DF00FF#FF00FE#FF00DF#FF00BF#FF009F#FF007F#FF005F#FF003F#FF001F
+        #FF0000#FF1F00 #FF3F00#FF7F00 #FF9F00#FFBF00 #FFDF00#DFFF00
         self.BBcounter = 0
         self.savedBBs=[]
         # size of the window
@@ -67,6 +71,7 @@ class FieldWindow(Frame):
     def init_window(self):
         # changing the title of our master widget
         self.master.title("Frame processing")
+        # set key listener
         self.master.bind('<Left>', self.leftKey)
         self.master.bind('<Right>', self.rightKey)
         self.master.bind('+', self.__next_BB)
@@ -165,7 +170,7 @@ class FieldWindow(Frame):
             bbFile = bbFile[0]
             print("CSV: "+bbFile)
             files = [f for f in files if not f.endswith("csv")]
-        else:
+        elif folder is not None:
             if messagebox.askokcancel(title="No bounding box file found", message="Do you want to choose a bounding box file on an other location?"):
                 bbFile = askopenfilename(parent=self, initialdir="./", title="Choose a bounding box file")
         if bbFile is not None:
@@ -187,45 +192,56 @@ class FieldWindow(Frame):
 
     def __draw_BBs(self, bbs):
         print("__draw_BBs")
-        for i in range(0,len(bbs),5):
+        self.savedBBs = []
+        for i in range(0,len(bbs),6):
             lbl = bbs[i]
             x = float(bbs[i+1])
             y = float(bbs[i+2])
             width = float(bbs[i+3])
             height = float(bbs[i+4])
-            bbid = self.image_can.create_rectangle(x,y,x+width,y+height)
+            conf = int(float(bbs[i+5])*10)
+            bbid = self.image_can.create_rectangle(x,y,x+width,y+height,outline=self.bbcolor[conf])
             if lbl is not None and lbl!="":
-                bblblid = self.image_can.create_text(x+15,y-15,text=lbl)
+                bblblid = self.image_can.create_text(x+15,y-15,text=lbl,fill=self.bbcolor[conf])
             else:
-                bblblid = self.image_can.create_text(x+15,y-15,text="")
+                bblblid = self.image_can.create_text(x+15,y-15,text="",fill=self.bbcolor[conf])
             
             # save bb for labeling 
-            self.savedBBs.append([bbid,bblblid,[lbl,x,y]])
+            self.savedBBs.append([bbid,bblblid,[lbl,x,y,conf]])
         self.image_can.itemconfig(self.savedBBs[self.BBcounter][0],outline='lightgreen')
         self.image_can.itemconfig(self.savedBBs[self.BBcounter][1],fill='lightgreen')
 
     def __next_BB(self,event):
-        self.image_can.itemconfig(self.savedBBs[self.BBcounter][0],outline='black')
-        self.image_can.itemconfig(self.savedBBs[self.BBcounter][1],fill='black')
-        self.BBcounter = self.BBcounter+1
+        conf = self.savedBBs[self.BBcounter][2][-1]
+        self.image_can.itemconfig(self.savedBBs[self.BBcounter][0],outline=self.bbcolor[conf])
+        self.image_can.itemconfig(self.savedBBs[self.BBcounter][1],fill=self.bbcolor[conf])
+        self.BBcounter = (self.BBcounter+1)%len(self.savedBBs)
         self.image_can.itemconfig(self.savedBBs[self.BBcounter][0],outline='lightgreen')
         self.image_can.itemconfig(self.savedBBs[self.BBcounter][1],fill='lightgreen')
         
     def __BB_before(self,event):
-        self.image_can.itemconfig(self.savedBBs[self.BBcounter][0],outline='black')
-        self.image_can.itemconfig(self.savedBBs[self.BBcounter][1],fill='black')
-        self.BBcounter = self.BBcounter-1
+        conf = self.savedBBs[self.BBcounter][2][-1]
+        self.image_can.itemconfig(self.savedBBs[self.BBcounter][0],outline=self.bbcolor[conf])
+        self.image_can.itemconfig(self.savedBBs[self.BBcounter][1],fill=self.bbcolor[conf])
+        self.BBcounter = (self.BBcounter-1)%len(self.savedBBs)
         self.image_can.itemconfig(self.savedBBs[self.BBcounter][0],outline='lightgreen')
         self.image_can.itemconfig(self.savedBBs[self.BBcounter][1],fill='lightgreen')
 
     def __set_Lbl(self,event):
-        # TODO ausnahmen fehlen (back, enter, first key after choosing the bb)
-        if (event.keycode>=48 and event.keycode<=57) or \
-            (event.keycode>=65 and event.keycode<=90) or\
-            (event.keycode>=97 and event.keycode<=122):
+        if (event.keycode>=48 and event.keycode<=57):
             newText = self.savedBBs[self.BBcounter][2][0]+event.char
             self.savedBBs[self.BBcounter][2][0] = newText
             self.image_can.itemconfig(self.savedBBs[self.BBcounter][1],text=newText)
+            if int(newText)>10:
+                self.image_can.itemconfig(self.savedBBs[self.BBcounter][1],fill='red')  
+            else:      
+                self.image_can.itemconfig(self.savedBBs[self.BBcounter][1],fill='lightgreen')
+
+        if event.keycode==8:
+            newText = self.savedBBs[self.BBcounter][2][0][:-1]
+            self.savedBBs[self.BBcounter][2][0] = newText
+            self.image_can.itemconfig(self.savedBBs[self.BBcounter][1],text=newText)
+        print(event.keycode)
 
     def load_next_image(self, can):
         if len(self.image_list) > 0 and self.image_counter < len(self.image_list):
