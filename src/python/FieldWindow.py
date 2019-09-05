@@ -6,7 +6,9 @@ import numpy as np
 import glob
 import re
 from Homography import Homography
-from HomographyCalculation import HomographyCalculation
+import CSVManager
+
+
 
 
 class FieldWindow(Frame):
@@ -17,6 +19,7 @@ class FieldWindow(Frame):
     idsFrames = []
     ids = []
     can = None
+    btnCan = None
     nrPoints = None
     H = None
     image_list = []
@@ -32,10 +35,23 @@ class FieldWindow(Frame):
     detecthomography = False
     bindidimageclick = None
     bindidhomographyclick = None
+    isBBox = False
+    fps = 25
     homographyPointsIDs = []
+    csv = None
+    rectangles = []
+    currentRectangle = None
+    savedRectangle = False
+    defaultConfidence = 1.0
+    confidences = []
+    allConfidences = []
     iddict = {
         'Black-Red':1, 'Black-Green':2, 'Black-Blue':3, 'Black-Yellow':4, 'Black-Pink':5, 'White-Red':6, 'White-Green':7,
-        'White-Blue':8, 'White-Yellow':9, 'White-Pink':10, 'Ball':0, 'Unknown':None
+        'White-Blue':8, 'White-Yellow':9, 'White-Pink':0, 'Ball':10, 'Unknown':None
+    }
+    iddictreverse = {
+        1:'Black-Red', 2:'Black-Green', 3:'Black-Blue', 4:'Black-Yellow', 5:'Black-Pink', 6:'White-Red', 7:'White-Green',
+        8:'White-Blue', 9:'White-Yellow', 0:'White-Pink', 10:'Ball', 11:'Unknown'
     }
 
     def __init__(self, master=None):
@@ -60,32 +76,36 @@ class FieldWindow(Frame):
         self.master.title("Frame processing")
         self.master.bind('<Left>', self.leftKey)
         self.master.bind('<Right>', self.rightKey)
+        for i in range(10):
+            self.master.bind(str(i), self.numberKey)
+        self.master.bind('<b>', self.bKey)
+        self.master.bind('<s>', self.saveBBox)
         self.pack(fill=BOTH, expand=1)
         # button canvas
-        btnCan = Canvas(self, height=20, width=1400)
-        lbl = Label(btnCan, text="Number of matched points:")
+        self.btnCan = Canvas(self, height=20, width=1400)
+        lbl = Label(self.btnCan, text="Number of matched points:")
         lbl.pack(side=LEFT, padx=40)
-        self.nrPoints = Label(btnCan, text="0", width=20)
+        self.nrPoints = Label(self.btnCan, text="0", width=20)
         self.nrPoints.pack(side=LEFT)
-        startCalc = Button(btnCan, text="Start Homography Calculation", command=self.startCalculation)
+        startCalc = Button(self.btnCan, text="Start Homography Calculation", command=self.startCalculation)
         startCalc.pack(side=RIGHT, padx=40)
-        buttonsaveid=Button(btnCan, text="Save", command=self.saveBoundingBoxID)
+        buttonsaveid=Button(self.btnCan, text="Save", command=self.saveBoundingBoxID)
         buttonsaveid.pack(side=RIGHT, padx=5)
         #self.textentryid = Entry(btnCan)
         #self.textentryid.pack(side=RIGHT, padx=5)
 
         # Create a Tkinter variable
-        self.textentryid = StringVar(btnCan)
+        self.textentryid = StringVar(self.btnCan)
 
         # Dictionary with options
         choices = {'Black-Red', 'Black-Green', 'Black-Blue', 'Black-Yellow', 'Black-Pink','White-Red','White-Green','White-Blue', 'White-Yellow', 'White-Pink', 'Ball', 'Unknown'}
         self.textentryid.set('None')  # set the default option
 
-        popupMenu = OptionMenu(btnCan, self.textentryid, *choices)
+        popupMenu = OptionMenu(self.btnCan, self.textentryid, *choices)
         popupMenu.pack(side=RIGHT, padx=5)
-        id = Label(btnCan, text="ID")
+        id = Label(self.btnCan, text="ID")
         id.pack(side=RIGHT, padx=5)
-        btnCan.pack(fill=BOTH)
+        self.btnCan.pack(fill=BOTH)
 
         # canvas for image
         imageCan = Canvas(self, height=700, width=1000)
@@ -103,6 +123,7 @@ class FieldWindow(Frame):
         self.mark_points(fieldCan)
 
         self.init_menu(imageCan, fieldCan)
+
 
     def init_menu(self, imageCan, fieldCan):
         # creating a menu instance
@@ -123,7 +144,7 @@ class FieldWindow(Frame):
         menu.add_cascade(label="Homography", menu=homographymenu)
 
     def centerWindow(self):
-        # Gets the requested values of the height and widht.
+        # Gets the requested values of the height and width.
         windowWidth = 1400  # self.master.winfo_reqwidth()
         windowHeight = 800  # self.master.winfo_reqheight()
 
@@ -146,7 +167,7 @@ class FieldWindow(Frame):
         folder = askdirectory(parent=self, initialdir="./", title='Select a folder')
         files = glob.glob(folder + '/*')
         self.image_list = files
-
+        self.csv = CSVManager.CSV(folder)
         # sort images by number in name
         files = sorted(files, key=lambda x: float(re.findall("(\d+)", x)[-1]))
         print(files[0])
@@ -163,10 +184,12 @@ class FieldWindow(Frame):
                 self.bboxes = []
                 self.idsFrames.append(self.ids)
                 self.ids = []
+                self.allConfidences.append(self.confidences)
+                self.confidences = []
             load = Image.open(self.image_list[self.image_counter])
             self.image_counter +=1
             scale = 1.01
-            print(load.width)
+            #print(load.width)
             while load.width > 950 and load.height > 650:
                 scale = scale - 0.01
                 load = load.resize((int(load.width * scale), int(load.height * scale)))
@@ -276,7 +299,7 @@ class FieldWindow(Frame):
             homographyRet = calc.calcHomography(self.image_points, self.homographyPointsIDs)
             if homographyRet == -1:
                 tkinter.messagebox.showinfo("Homography error", "Less than 3 points chosen for homography. Please add more")
-            if homographyRet ==-2:
+            if homographyRet == -2:
                 tkinter.messagebox.showinfo("Homography error", "Chosen points are on one line. Please add perpendicular point")
             #calc.startCalculation()
 
@@ -297,48 +320,67 @@ class FieldWindow(Frame):
         self.nrPoints['text'] = str(min(len(self.image_points), len(self.field_points)))
 
     def image_click_handler(self, event):
+        self.isBBox = False
+        if not self.savedRectangle:
+            self.image_can.delete(self.currentRectangle)
+            self.currentRectangle = None
+        self.savedRectangle = False
         # print('position: x='+str(event.x)+", y="+str(event.y))
         self.bb_start = [event.x, event.y]
         self.image_points.append([event.x, event.y])
-
+        self.createBBox([self.bb_start[0], self.bb_start[1], self.bb_start[0], self.bb_start[1]])
         # set number of matched points in frame
         self.nrPoints['text'] = str(min(len(self.image_points), len(self.field_points)))
 
     def image_drag_handler(self, event):
         #print('drag position: x='+str(event.x)+", y="+str(event.y))
+        #print(self.isBBox)
         self.bb_intermediate = [event.x, event.y]
-        self.draw_bb()
+        self.updateBBox([self.bb_start[0], self.bb_start[1], self.bb_intermediate[0], self.bb_intermediate[1]])
+        #self.draw_bb()
 
 
     def image_release_handler(self, event):
-        #print('release position: x='+str(event.x)+", y="+str(event.y))
+        self.isBBox = True
+        print('release position: x='+str(event.x)+", y="+str(event.y))
         self.bb_end = [event.x, event.y]
+        self.updateBBox([self.bb_start[0],self.bb_start[1], self.bb_end[0], self.bb_end[1]])
 
+    def createBBox(self, bb):
+        self.currentRectangle = self.image_can.create_rectangle(bb[0], bb[1], bb[2], bb[3])
+
+    def updateBBox(self, bb):
+        if self.currentRectangle is not None:
+            self.image_can.coords(self.currentRectangle, bb[0], bb[1], bb[2], bb[3])
     def draw_bb(self):
         self.image_can.create_image(20,20, anchor=NW, image=ImageTk.PhotoImage(self.currentImage))
+        print(self.bboxes)
         for bb in self.bboxes:
             self.image_can.create_rectangle(bb[0], bb[1], bb[2], bb[3])
         self.image_can.create_rectangle(self.bb_start[0], self.bb_start[1], self.bb_intermediate[0], self.bb_intermediate[1])
-
     def saveBoundingBoxID(self):
-        self.bboxes.append([self.bb_start[0],self.bb_start[1],self.bb_end[0],self.bb_end[1]])
-        self.ids.append(self.iddict[self.textentryid.get()])
-        print(self.ids)
-        print(self.textentryid.get())
-        self.textentryid.set('None')
+        if self.isBBox:
+            self.bboxes.append([self.bb_start[0],self.bb_start[1],self.bb_end[0],self.bb_end[1]])
+            self.rectangles.append(self.currentRectangle)
+            self.savedRectangle = True
+            self.ids.append(self.iddict[self.textentryid.get()])
+            print(self.ids)
+            print(self.textentryid.get())
+            self.textentryid.set('None')
+            self.isBBox = False
+            self.confidences.append(self.defaultConfidence)
+        else:
+            tkinter.messagebox.showinfo("No Bounding Box", "There is no bounding box to be saved")
 
     def testHomography(self):
         if self.H is not None:
-            imageTransformed = self.H.transformImage(self.currentImage.transpose(Image.FLIP_LEFT_RIGHT).transpose(Image.ROTATE_90))
+            imageTransformed = self.H.transformImage(self.currentImage.transpose(Image.FLIP_LEFT_RIGHT))
             print(self.currentImage.size)
             print(imageTransformed.size)
             self.image_can.create_image(20,20, anchor=NW, image=ImageTk.PhotoImage(imageTransformed))
             imageTransformed.save("img2.png")
             #print(np.asarray(imageTransformed))
 
-    def save_results(self):
-
-        print("save results")
 
     def point_handler(self, event):
         x = round((event.x - 30) / 16.25, 2)
@@ -375,8 +417,28 @@ class FieldWindow(Frame):
     def rightKey(self, event):
         print("Right key pressed")
         if self.folder_loaded:
+            self.saveFrame()
             self.load_next_image(self.image_can)
 
+    def numberKey(self, event):
+        print("pressed "+event.char)
+        self.textentryid.set(self.iddictreverse[int(event.char)])
+
+    def bKey(self, event):
+        print("pressed b")
+        self.textentryid.set(self.iddictreverse[10])
+
+    def nKey(self, event):
+        print("pressed n")
+        self.textentryid.set(self.iddictreverse[11])
+
+    def saveBBox(self):
+        print("pressed s")
+        self.saveBBox()
+
+    def saveFrame(self):
+        if self.csv is not None:
+            self.csv.writeFrame(self.getTime(), self.ids, self.bboxes, self.confidences)
 
     def get_H(self):
         return self.H
@@ -393,5 +455,10 @@ class FieldWindow(Frame):
 
     def __client_exit(self):
         exit()
+
+    def getTime(self):
+        return float(self.image_counter)/float(self.fps)
+
+    #def writeCSV(self, filename):
 
 

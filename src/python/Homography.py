@@ -25,12 +25,12 @@ class Homography:
         dstPoints= np.asarray(self.cornersField[np.asarray(pointIndices)], dtype = "float32")
         print(dstPoints)
         print(np.float32(dstPoints))
-        M = cv2.getPerspectiveTransform(imagePoints, dstPoints)
-        self.homography = M
-        print(M)
+        #M = cv2.getPerspectiveTransform(imagePoints, dstPoints)
+        #self.homography = M
+        #print(M)
         #t = ProjectiveTransform()
         #self.homography = t.estimate(imagePoints,dstPoints)
-        #self.homography, mask = cv2.findHomography(np.float32(imagePoints), np.float32(dstPoints))
+        self.homography, mask = cv2.findHomography(np.float32(imagePoints), np.float32(dstPoints))
         return 1
 
 
@@ -47,7 +47,7 @@ class Homography:
             image = np.array(image)
             x,y,z = image.shape
 
-            imageTransformed = cv2.warpPerspective(image, self.homography, (7*x,7*y))
+            imageTransformed = cv2.warpPerspective(image, self.homography, (7*y,7*x))
             return Image.fromarray(imageTransformed)
         else:
             return None
