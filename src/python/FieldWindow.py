@@ -94,8 +94,8 @@ class FieldWindow(Frame):
         # set key listener
         self.master.bind('<Left>', self.leftKey)
         self.master.bind('<Right>', self.rightKey)
-        for i in range(10):
-            self.master.bind(str(i), self.numberKey)
+        #for i in range(10):
+        #    self.master.bind(str(i), self.numberKey)
         self.master.bind('<b>', self.bKey)
         self.master.bind('<s>', self.saveBBox)
         self.master.bind('+', self.__next_BB)
@@ -219,17 +219,20 @@ class FieldWindow(Frame):
         print("__draw_BBs")
         self.savedBBs = []
         for i in range(0,len(bbs),6):
-            lbl = int(bbs[i])
+            lbl = bbs[i]
             x = float(bbs[i+1])
             y = float(bbs[i+2])
             width = float(bbs[i+3])
             height = float(bbs[i+4])
             conf = int(float(bbs[i+5])*10)
-            bbid = self.image_can.create_rectangle(x,y,x+width,y+height,outline=self.bbcolor[lbl],width=3)
+            bbc = 'black'
+            if lbl != '':
+                bbc = self.bbcolor[int(lbl)]
+            bbid = self.image_can.create_rectangle(x,y,x+width,y+height,outline=bbc,width=3)
             if lbl is not None and lbl!="":
-                bblblid = self.image_can.create_text(x+15,y-15,text=lbl,fill=self.bbcolor[lbl],font='bold')
+                bblblid = self.image_can.create_text(x+15,y-15,text=lbl,fill=bbc,font='bold')
             else:
-                bblblid = self.image_can.create_text(x+15,y-15,text="",fill=self.bbcolor[lbl],font='bold')
+                bblblid = self.image_can.create_text(x+15,y-15,text="",fill=bbc,font='bold')
             
             # save bb for labeling 
             self.savedBBs.append([bbid,bblblid,[lbl,x,y,conf]])
@@ -238,22 +241,29 @@ class FieldWindow(Frame):
 
     def __next_BB(self,event):
         lbl = self.savedBBs[self.BBcounter][2][0]
-        self.image_can.itemconfig(self.savedBBs[self.BBcounter][0],outline=self.bbcolor[lbl])
-        self.image_can.itemconfig(self.savedBBs[self.BBcounter][1],fill=self.bbcolor[lbl])
+        bbc = 'black'
+        if lbl != '':
+            bbc = self.bbcolor[int(lbl)]
+        self.image_can.itemconfig(self.savedBBs[self.BBcounter][0],outline=bbc)
+        self.image_can.itemconfig(self.savedBBs[self.BBcounter][1],fill=bbc)
         self.BBcounter = (self.BBcounter+1)%len(self.savedBBs)
         self.image_can.itemconfig(self.savedBBs[self.BBcounter][0],outline='lightgreen')
         self.image_can.itemconfig(self.savedBBs[self.BBcounter][1],fill='lightgreen')
         
     def __BB_before(self,event):
         lbl = self.savedBBs[self.BBcounter][2][-1]
-        self.image_can.itemconfig(self.savedBBs[self.BBcounter][0],outline=self.bbcolor[lbl])
-        self.image_can.itemconfig(self.savedBBs[self.BBcounter][1],fill=self.bbcolor[lbl])
+        bbc = 'black'
+        if lbl != '':
+            bbc = self.bbcolor[int(lbl)]
+        self.image_can.itemconfig(self.savedBBs[self.BBcounter][0],outline=bbc)
+        self.image_can.itemconfig(self.savedBBs[self.BBcounter][1],fill=bbc)
         self.BBcounter = (self.BBcounter-1)%len(self.savedBBs)
         self.image_can.itemconfig(self.savedBBs[self.BBcounter][0],outline='lightgreen')
         self.image_can.itemconfig(self.savedBBs[self.BBcounter][1],fill='lightgreen')
 
     def __set_Lbl(self,event):
-        if (event.keycode>=48 and event.keycode<=57):
+        if (event.keycode>=48 and event.keycode<=57):# or\
+            #(event.keycode>=0 and event.keycode<=9):
             newText = self.savedBBs[self.BBcounter][2][0]+event.char
             self.savedBBs[self.BBcounter][2][0] = newText
             self.image_can.itemconfig(self.savedBBs[self.BBcounter][1],text=newText)
@@ -261,11 +271,13 @@ class FieldWindow(Frame):
                 self.image_can.itemconfig(self.savedBBs[self.BBcounter][1],fill='red')  
             else:      
                 self.image_can.itemconfig(self.savedBBs[self.BBcounter][1],fill='lightgreen')
+            self.numberKey(event)
 
         if event.keycode==8:
             newText = self.savedBBs[self.BBcounter][2][0][:-1]
             self.savedBBs[self.BBcounter][2][0] = newText
             self.image_can.itemconfig(self.savedBBs[self.BBcounter][1],text=newText)
+
         print(event.keycode)
 
     def load_next_image(self, can):
@@ -405,19 +417,38 @@ class FieldWindow(Frame):
             #self.save_H()
             tkinter.messagebox.showinfo("Calculation finished.",
                                         "Calculated Homography")
+            self.processFrames()
         else:
             tkinter.messagebox.showinfo("Calculation not possible", "Not enough points marked for calculation.")
         if len(self.savedBBs)>0 and self.H is not None and self.H.homography is not None:
-            points = []
             for bbs in self.savedBBs:
-                lbl = int(bbs[-1][0])
+                lbl = bbs[-1][0]
+                bbc = 'black'
+                if lbl != '':
+                    bbc = self.bbcolor[int(lbl)]
                 x = bbs[-1][1]
                 y = bbs[-1][2]
-                points.append([x,y])
                 p = self.H.transformPoint(np.array([[x,y]],dtype=float).reshape((-1, 1, 2)))
                 x_ = 355-(p[0,0,0]*355/2000)+30
-                y_ = (p[0,0,1]*355/2000)+30
-                self.can.create_text(x_,y_,text=lbl,fill=self.bbcolor[lbl])
+                y_ = (p[0,0,1]*355/2000)+30 #TODO
+                self.can.create_text(x_,y_,text=lbl,fill=bbc)
+
+    def __create_Field_Coord(self):
+        print("Create field coord")
+        bbs = self.savedBBs[-1]
+        print(bbs)
+        lbl = bbs[-1][0]
+        bbc = 'black'
+        if lbl != '':
+            bbc = self.bbcolor[int(lbl)]
+        else:
+            lbl='X'
+        x = bbs[-1][1]
+        y = bbs[-1][2]
+        p = self.H.transformPoint(np.array([[x,y]],dtype=float).reshape((-1, 1, 2)))
+        x_ = 355-(p[0,0,0]*355/2000)+30
+        y_ = (p[0,0,1]*355/2000)+30
+        self.can.create_text(x_,y_,text=lbl,fill=bbc)
 
     def homography_click_handler(self, event):
         # print('position: x='+str(event.x)+", y="+str(event.y))
@@ -449,17 +480,36 @@ class FieldWindow(Frame):
 
 
     def image_release_handler(self, event):
-        self.isBBox = True
-        print('release position: x='+str(event.x)+", y="+str(event.y))
-        self.bb_end = [event.x, event.y]
-        self.updateBBox([self.bb_start[0],self.bb_start[1], self.bb_end[0], self.bb_end[1]])
+        if self.bb_start is not None and len(self.bb_start)==2:
+            self.isBBox = True
+            print('release position: x='+str(event.x)+", y="+str(event.y))
+            self.bb_end = [event.x, event.y]
+            self.updateBBox([self.bb_start[0],self.bb_start[1], self.bb_end[0], self.bb_end[1]])
+            self.bb_start=None
+            self.bb_end=None
+            # calc field coordinates if H is set
+            if self.H is not None and self.H.homography is not None:
+                self.__create_Field_Coord()
+            # set new bb as current
+            lbl = self.savedBBs[self.BBcounter][2][0]
+            bbc = 'black'
+            if lbl != '':
+                bbc = self.bbcolor[int(lbl)]
+            self.image_can.itemconfig(self.savedBBs[self.BBcounter][0],outline=bbc)
+            self.image_can.itemconfig(self.savedBBs[self.BBcounter][1],fill=bbc)
+            self.BBcounter = -1
+            self.image_can.itemconfig(self.savedBBs[self.BBcounter][0],outline='lightgreen')
+            self.image_can.itemconfig(self.savedBBs[self.BBcounter][1],fill='lightgreen')
 
     def createBBox(self, bb):
-        self.currentRectangle = self.image_can.create_rectangle(bb[0], bb[1], bb[2], bb[3])
+        self.currentRectangle = self.image_can.create_rectangle(bb[0], bb[1], bb[2], bb[3],width=3)
+        lblId = self.image_can.create_text(bb[0]+15,bb[1]-15,text="",fill='light green',font='bold')
+        self.savedBBs.append([self.currentRectangle,lblId,["",bb[0],bb[1],1.0]])
 
     def updateBBox(self, bb):
         if self.currentRectangle is not None:
             self.image_can.coords(self.currentRectangle, bb[0], bb[1], bb[2], bb[3])
+
     def draw_bb(self):
         self.image_can.create_image(20,20, anchor=NW, image=ImageTk.PhotoImage(self.currentImage))
         print(self.bboxes)
@@ -515,7 +565,7 @@ class FieldWindow(Frame):
     def processFrames(self):
         if self.folder_loaded:
             if self.bindidhomographyclick != None:
-                self.image_can.undbind(self.bindidhomographyclick)
+                self.image_can.unbind(self.bindidhomographyclick)
                 self.bindidhomographyclick = None
             self.bindidimageclick = self.image_can.bind("<Button-1>", self.image_click_handler)
 
