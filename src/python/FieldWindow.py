@@ -197,8 +197,12 @@ class FieldWindow(Frame):
         elif folder is not None:
             if messagebox.askokcancel(title="No bounding box file found", message="Do you want to choose a bounding box file on an other location?"):
                 bbFile = askopenfilename(parent=self, initialdir="./", title="Choose a bounding box file")
-        if bbFile is not None:
+            else:
+                bbFile = ""
+        if bbFile!="":
             self.__load_BBs(bbFile)
+        else:
+            self.bbs = []
 
         self.image_list = files
         self.csv = CSVManager.CSV(folder)
@@ -306,7 +310,10 @@ class FieldWindow(Frame):
                 self.allConfidences.append(self.confidences)
                 self.confidences = []
             load = Image.open(self.image_list[self.image_counter])
-            bb = self.bbs[self.image_counter][1:]
+            if len(self.bbs)>self.image_counter:
+                bb = self.bbs[self.image_counter][1:]
+            else:
+                bb = None
             self.image_counter +=1
             scale = 1.01
             #print(load.width)
@@ -319,7 +326,10 @@ class FieldWindow(Frame):
             # labels can be text or images
             self.currentImage = load
             self.image_can.create_image(20,20, anchor=NW, image=render)
-            self.__draw_BBs(bb)
+            if bb is not None:
+                self.__draw_BBs(bb)
+            else:
+                self.savedBBs = []
             self.image_can.bind("<Button-1>", self.image_click_handler)
             self.image_can.bind("<B1-Motion>", self.image_drag_handler)
             self.image_can.bind("<ButtonRelease-1>", self.image_release_handler)
