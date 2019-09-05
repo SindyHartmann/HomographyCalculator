@@ -56,7 +56,11 @@ class FieldWindow(Frame):
         self.nrPoints = None
         self.H = None
         #colors for bbs
-        self.bbcolor = ['#003FFF','#0000FF','#5F00FF','#BF00FF','#FF00FE','#FF00BF','#FF007F','#FF003F','#FF0000','#FF3F00','#FF9F00','#DFFF00']
+        self.bbcolor = ['snow',\
+            'red3','green3','blue2','gold2','DeepPink3',\
+            'tomato','green yellow','deep sky blue','yellow','hot pink',\
+            'gray20']
+        #self.bbcolor = ['#003FFF','#0000FF','#5F00FF','#BF00FF','#FF00FE','#FF00BF','#FF007F','#FF003F','#FF0000','#FF3F00','#FF9F00','#DFFF00']
         #003FFF#001FFF#0000FF#3F00FF#5F00FF#7F00FF #BF00FF#DF00FF#FF00FE#FF00DF#FF00BF#FF009F#FF007F#FF005F#FF003F#FF001F
         #FF0000#FF1F00 #FF3F00#FF7F00 #FF9F00#FFBF00 #FFDF00#DFFF00
         self.BBcounter = 0
