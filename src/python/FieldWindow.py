@@ -53,12 +53,12 @@ class FieldWindow(Frame):
     confidences = []
     allConfidences = []
     iddict = {
-        'Black-Red':1, 'Black-Green':2, 'Black-Blue':3, 'Black-Yellow':4, 'Black-Pink':5, 'White-Red':6, 'White-Green':7,
-        'White-Blue':8, 'White-Yellow':9, 'White-Pink':0, 'Ball':10, 'Unknown':None
+        'Black-Pink':1, 'White-Pink':2, 'Black-Yellow':3, 'White-Yellow':4, 'Black-Blue':5, 'White-Blue':6, 'Black-Red':7,
+        'White-Red':8, 'Black-Green':9, 'White-Green':10, 'Ball':0, 'Unknown':None
     }
     iddictreverse = {
-        1:'Black-Red', 2:'Black-Green', 3:'Black-Blue', 4:'Black-Yellow', 5:'Black-Pink', 6:'White-Red', 7:'White-Green',
-        8:'White-Blue', 9:'White-Yellow', 0:'White-Pink', 10:'Ball', 11:'Unknown'
+        1:'Black-Pink', 2:'White-Pink', 3:'Black-Yellow', 4:'White-Yellow', 5:'Black-Blue', 6:'White-Blue', 7:'Black-Red',
+        8:'White-Red', 9:'Black-Green', 10:'White-Green', 0:'Ball', 11:'Unknown'
     }
 
     def __init__(self, master=None):
@@ -72,9 +72,10 @@ class FieldWindow(Frame):
         self.nrPoints = None
         self.H = None
         #colors for bbs
-        self.bbcolor = ['#003FFF','#0000FF','#5F00FF','#BF00FF','#FF00FE','#FF00BF','#FF007F','#FF003F','#FF0000','#FF3F00','#FF9F00','#DFFF00']
-        #003FFF#001FFF#0000FF#3F00FF#5F00FF#7F00FF #BF00FF#DF00FF#FF00FE#FF00DF#FF00BF#FF009F#FF007F#FF005F#FF003F#FF001F
-        #FF0000#FF1F00 #FF3F00#FF7F00 #FF9F00#FFBF00 #FFDF00#DFFF00
+        self.bbcolor = ['snow', \
+                        'DeepPink3', 'hot pink', 'gold2', 'yellow', \
+                        'blue2', 'deep sky blue', 'red3', 'tomato',\
+                        'green3', 'green yellow', 'gray30']
         self.BBcounter = 0
         self.savedBBs=[]
         # size of the window
@@ -90,8 +91,8 @@ class FieldWindow(Frame):
         # set key listener
         self.master.bind('<Left>', self.leftKey)
         self.master.bind('<Right>', self.rightKey)
-        for i in range(10):
-            self.master.bind(str(i), self.numberKey)
+        #for i in range(10):
+        #    self.master.bind(str(i), self.numberKey)
         self.master.bind('<b>', self.bKey)
         self.master.bind('<s>', self.saveBBox)
         self.master.bind('+', self.__next_BB)
@@ -109,18 +110,21 @@ class FieldWindow(Frame):
         buttonsaveid=Button(self.btnCan, text="Save", command=self.saveBoundingBoxID)
         buttonsaveid.pack(side=RIGHT, padx=5)
         self.bbs=[]
-        #self.textentryid = Entry(btnCan)
-        #self.textentryid.pack(side=RIGHT, padx=5)
 
         # Create a Tkinter variable
         self.textentryid = StringVar(self.btnCan)
 
         # Dictionary with options
-        choices = {'Black-Red', 'Black-Green', 'Black-Blue', 'Black-Yellow', 'Black-Pink','White-Red','White-Green','White-Blue', 'White-Yellow', 'White-Pink', 'Ball', 'Unknown'}
         self.textentryid.set('None')  # set the default option
-
-        popupMenu = OptionMenu(self.btnCan, self.textentryid, *choices)
+        result = []
+        keys = sorted(self.iddictreverse.keys())
+        for key in keys:
+            result.append(self.iddictreverse[key])
+        popupMenu = OptionMenu(self.btnCan, self.textentryid, *result)
         popupMenu.pack(side=RIGHT, padx=5)
+        for index in range(len(self.bbcolor)):
+            bg_color = self.bbcolor[index]
+            popupMenu['menu'].entryconfig(index, background=bg_color, activebackground=bg_color)
         id = Label(self.btnCan, text="ID")
         id.pack(side=RIGHT, padx=5)
         self.btnCan.pack(fill=BOTH)
@@ -251,12 +255,21 @@ class FieldWindow(Frame):
     def __set_Lbl(self,event):
         if (event.keycode>=48 and event.keycode<=57):
             newText = self.savedBBs[self.BBcounter][2][0]+event.char
-            self.savedBBs[self.BBcounter][2][0] = newText
-            self.image_can.itemconfig(self.savedBBs[self.BBcounter][1],text=newText)
-            if int(newText)>10:
-                self.image_can.itemconfig(self.savedBBs[self.BBcounter][1],fill='red')  
-            else:      
-                self.image_can.itemconfig(self.savedBBs[self.BBcounter][1],fill='lightgreen')
+            print(newText)
+            try:
+                newLabel = int(newText)
+                self.savedBBs[self.BBcounter][2][0] = newText
+                self.image_can.itemconfig(self.savedBBs[self.BBcounter][1], text=newText)
+                if newLabel > 11:
+                    self.image_can.itemconfig(self.savedBBs[self.BBcounter][1], fill='red')
+                else:
+                    self.image_can.itemconfig(self.savedBBs[self.BBcounter][1], fill='lightgreen')
+                    self.textentryid.set(self.iddictreverse[newLabel])
+
+
+            except:
+                tkinter.messagebox.showinfo("Incorrect label","Label must be an Integer.")
+
 
         if event.keycode==8:
             newText = self.savedBBs[self.BBcounter][2][0][:-1]
